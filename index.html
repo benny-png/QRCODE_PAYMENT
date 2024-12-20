@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Online Payment</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .payment-status {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 5px;
+      display: none;
+    }
+    .success { background-color: #d4edda; color: #155724; }
+    .error { background-color: #f8d7da; color: #721c24; }
+    .pending { background-color: #fff3cd; color: #856404; }
+    .price { font-weight: bold; color: #28a745; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>Swahilies Online Payment</h1>
+      <p>Fast, Secure, and Reliable Payments</p>
+    </header>
+    <main class="form-container">
+      <form id="paymentForm">
+        <div class="form-row">
+          <label for="name">Full Name:</label>
+          <input type="text" id="name" name="name" placeholder="Enter your full name" required>
+        </div>
+        <div class="form-row">
+          <label for="email">Email:</label>
+          <input type="email" id="email" name="email" placeholder="Enter your email" required>
+        </div>
+        <div class="form-row">
+          <div class="phone-input">
+            <label for="phoneNumber">Phone Number:</label>
+            <input type="tel" id="phoneNumber" name="phoneNumber" placeholder="0682616091" pattern="0[0-9]{9}" maxlength="10" required>
+          </div>
+        </div>
+        <div class="payment-cards">
+          <div class="card" data-level="localStudent" data-amount="10000">
+            <h3>Local Student</h3>
+            <p>Affordable plans for local students.</p>
+            <p class="price">TZS 10,000</p>
+          </div>
+          <div class="card" data-level="localNonStudent" data-amount="20000">
+            <h3>Local Non-Student</h3>
+            <p>Flexible plans for residents.</p>
+            <p class="price">TZS 20,000</p>
+          </div>
+          <div class="card" data-level="international" data-amount="50000">
+            <h3>International</h3>
+            <p>Secure and global payment options.</p>
+            <p class="price">TZS 50,000</p>
+          </div>
+          <div class="card" data-level="vip" data-amount="100000">
+            <h3>VIP</h3>
+            <p>Exclusive premium benefits.</p>
+            <p class="price">TZS 100,000</p>
+          </div>
+        </div>
+        <input type="hidden" id="paymentLevel" name="paymentLevel" required>
+        <input type="hidden" id="amount" name="amount" required>
+        <button type="submit" class="submit-btn">Submit Payment</button>
+      </form>
+      <div id="paymentStatus" class="payment-status"></div>
+    </main>
+    <div class="images-section">
+      <img src="https://via.placeholder.com/400x200" alt="Payment Image 1">
+      <img src="https://via.placeholder.com/400x200" alt="Payment Image 2">
+    </div>
+    <footer class="footer">
+      <p>© 2024 Swahilies. All Rights Reserved.</p>
+    </footer>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'https://zenopay-annual-meeting.onrender.com';
+    let ws;
+    let currentOrderId = null;
+
+    function initWebSocket() {
+      try {
+        ws = new WebSocket(`wss://zenopay-annual-meeting.onrender.com/ws`);
+        ws.onmessage = (event) => {
+          console.log('WebSocket message:', event.data);
+          if (event.data.includes(currentOrderId)) {
+            checkOrderStatus(currentOrderId);
+          }
+        };
+        ws.onclose = () => setTimeout(initWebSocket, 1000);
+        ws.onerror = (error) => console.error('WebSocket error:', error);
+      } catch (error) {
+        console.error('WebSocket connection error:', error);
+      }
+    }
+    
+    initWebSocket();
+
+    document.querySelectorAll('.card').forEach(card => {
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        document.getElementById('paymentLevel').value = card.dataset.level;
+        document.getElementById('amount').value = card.dataset.amount;
+      });
+    });
+
+    function updatePaymentStatus(status, message) {
+      const statusDiv = document.getElementById('paymentStatus');
+      statusDiv.style.display = 'block';
+      statusDiv.className = `payment-status ${status}`;
+      statusDiv.textContent = message;
+    }
+
+    async function checkOrderStatus(orderId) {
+      try {
+        console.log('Checking order status for:', orderId);
+        const response = await fetch(`${API_BASE_URL}/check_status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Status check failed: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Status check response:', data);
+        
+        if (data.payment_status === 'COMPLETED') {
+          updatePaymentStatus('success', 'Payment completed successfully! Thank you for your payment.');
+        } else if (data.payment_status === 'FAILED') {
+          updatePaymentStatus('error', 'Payment failed. Please try again or contact support.');
+        } else {
+          updatePaymentStatus('pending', 'Payment is being processed. Please wait...');
+          setTimeout(() => checkOrderStatus(orderId), 5000);
+        }
+      } catch (error) {
+        console.error('Status check error:', error);
+        updatePaymentStatus('error', `Error checking payment status: ${error.message}`);
+      }
+    }
+
+    document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      if (!document.getElementById('amount').value) {
+        updatePaymentStatus('error', 'Please select a payment plan before proceeding');
+        return;
+      }
+
+      const formData = {
+        buyer_name: document.getElementById('name').value,
+        buyer_email: document.getElementById('email').value,
+        buyer_phone: document.getElementById('phoneNumber').value,
+        amount: parseInt(document.getElementById('amount').value),
+        admin_id: "string"
+      };
+
+      console.log('Submitting payment:', formData);
+
+      try {
+        updatePaymentStatus('pending', 'Initiating payment...');
+        
+        const response = await fetch(`${API_BASE_URL}/create_order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+        console.log('Create order response:', data);
+
+        if (!response.ok) {
+          throw new Error(data.detail || `Payment initiation failed: ${response.status} ${response.statusText}`);
+        }
+        
+        if (data.status === 'success') {
+          currentOrderId = data.order_id;
+          updatePaymentStatus('pending', 'Payment initiated. Please check your phone for the payment prompt and complete the transaction.');
+          checkOrderStatus(data.order_id);
+        } else {
+          throw new Error(data.message || 'Order creation failed. Please try again.');
+        }
+      } catch (error) {
+        console.error('Payment submission error:', error);
+        updatePaymentStatus('error', `Payment Error: ${error.message}`);
+      }
+    });
+
+    // Validate phone number format
+    document.getElementById('phoneNumber').addEventListener('input', (e) => {
+      let phone = e.target.value;
+      if (phone && !phone.startsWith('0')) {
+        e.target.value = '0';
+      }
+      phone = phone.replace(/\D/g, '');
+      if (phone.length > 10) {
+        phone = phone.slice(0, 10);
+      }
+      e.target.value = phone;
+    });
+  </script>
+</body>
+</html>
